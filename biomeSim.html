@@ -237,7 +237,7 @@
 
                 // Decrease energy
                 if (this.dna.species === 'carnivore') {
-                    this.energy -= 0.08;
+                    this.energy -= 0.12;
                 } else {
                     this.energy -= 0.01;
                 }
@@ -450,6 +450,46 @@
                 if (this.dna.maxSpeed > maxAllowedSpeed) {
                     this.dna.maxSpeed = maxAllowedSpeed;
                 }
+            }
+        }
+
+        let herbivoreCountHistory = [];
+        let lastHistoryUpdate = Date.now();
+        const historyUpdateInterval = 100; // Update history every 100ms
+        const historyDuration = 30000; // Keep 30 seconds of history
+        const requiredHistoryPoints = Math.floor(historyDuration / historyUpdateInterval);
+
+        function updateHerbivoreHistory() {
+            const currentTime = Date.now();
+            
+            // Only update every 100ms
+            if (currentTime - lastHistoryUpdate >= historyUpdateInterval) {
+                const herbivoreCount = creatures.filter(c => c.dna.species === 'herbivore').length;
+                
+                // Add new count to history
+                herbivoreCountHistory.push(herbivoreCount);
+                
+                // Remove old entries to maintain only 1 minute of history
+                if (herbivoreCountHistory.length > requiredHistoryPoints) {
+                    herbivoreCountHistory.shift();
+                }
+                
+                // Check if we have enough history and all counts are between 500-600
+                if (herbivoreCountHistory.length === requiredHistoryPoints) {
+                    const allInRange = herbivoreCountHistory.every(count => count >= 450 && count <= 650);
+                    
+                    if (allInRange) {
+                        // Add predators and reset history
+                        const predatorsToAdd = 5 + Math.floor(Math.random() * 6); // Add 5-10 predators
+                        addPredators(predatorsToAdd);
+                        herbivoreCountHistory = []; // Reset history after spawning
+                        
+                        // Optional: Add visual feedback
+                        console.log(`Spawned ${predatorsToAdd} predators due to stable herbivore population`);
+                    }
+                }
+                
+                lastHistoryUpdate = currentTime;
             }
         }
 
@@ -727,7 +767,7 @@
 
             // Display statistics
             displayStats();
-
+            updateHerbivoreHistory();
             requestAnimationFrame(animate);
         }
 
@@ -743,7 +783,7 @@
             }
 
             // Deactivate safe zone if herbivores are ten times carnivores
-            if (safeZone.active && herbivores >= carnivores * 13) {
+            if (safeZone.active && herbivores >= carnivores * 12) {
                 safeZone.active = false;
             }
         }

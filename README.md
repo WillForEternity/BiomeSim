@@ -2,7 +2,7 @@
 
 ![BiomeSim](biome.png)
 -- --
-Welcome to this little **Biome Simulation**! To get started, simply open the provided `biomeSim.html` file, copy it into an html file, and get it running in your favorite web browser. Once running, it will automatically start the simulation. **I recommend letting the simulation run on its own, for it is pretty much optimized to be self-sustaining.**
+Welcome to this little **Biome Simulation**! To get started, simply open the provided `biomeSim.html` file, copy it into an html file, and get it running in your browser of choice. Once running, it will automatically start the simulation. **I recommend letting the simulation run on its own, for it is pretty much optimized to be self-sustaining.**
 -- --
 You will see a control panel on the top-left corner where you can adjust the number of creatures, mutation rate, and food abundance using the sliders. 
 

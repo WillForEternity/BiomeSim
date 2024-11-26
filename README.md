@@ -1,10 +1,14 @@
 # Underwater Biome Simulation! 🌊🦈🐠...☢️
 
 ![BiomeSim](biome.png)
+-- --
+Welcome to this little **Biome Simulation**! To get started, simply open the provided `biomeSim.html` file, copy it into an html file, and get it running in your favorite web browser. Once running, it will automatically start the simulation. **I recommend letting the simulation run on its own, for it is pretty much optimized to be self-sustaining.**
+-- --
+You will see a control panel on the top-left corner where you can adjust the number of creatures, mutation rate, and food abundance using the sliders. 
 
-Welcome to this little **Biome Simulation**! To get started, simply open the provided `biomeSim.html` file, copy it into an html file, and get it running in your favorite web browser. Once running, it will automatically start the simulation. You will see a control panel on the top-left corner where you can adjust the number of creatures, mutation rate, and food abundance using the sliders. For now, you can either let it go on its own, or click the mouse to add lots of food for the little blue creatures. After the screen is swarming with them and food is going fast, click the "Add Predators" button to introduce some carnivores. This is when the sim gets kind of fun to look at!
+For now, you can either let it go on its own, or click the mouse to add lots of food for the little blue creatures 🐠. After the screen is swarming with little creatures and food is going fast, you will notice that there is an equilibrium point that the creature population reaches. Don't worry, I've made things more interesting, and that interesting thing will happen when the system is stabilized. Carnivores 🦈 come out to feed! This is when the sim gets kind of fun to look at!
 
-Once the herbivore population is below a third the amount of the carnivore population, a safe zone will appear, and the herbivores will gather inside and reproduce until they are let free and quikcly eaten again. Once you're done watching this cycle, you can use the "Nuke" button to trigger a dramatic event that wipes out everything and resets the map. 
+Once the herbivore population is below a third the amount of the carnivore population, a safe zone will appear, and the herbivores will gather inside and reproduce until they are let free and quickly eaten again. This creates a really nice cycle that is fun to watch. Once you're done watching this, you can use the "Nuke" button to trigger a dramatic event that wipes out everything and resets the map. 
 
 Monitor the real-time statistics displayed at the bottom-left to observe the population dynamics of herbivores and carnivores. Experiment with different settings to see how various factors influence the balance of the ecosystem. 
 

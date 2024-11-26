@@ -51,13 +51,13 @@
     <div class="controls">
         <label>
             Creature Count:
-            <input type="range" id="creatureCount" min="1" max="500" value="2">
-            <span id="creatureCountValue">2</span>
+            <input type="range" id="creatureCount" min="1" max="1000" value="1">
+            <span id="creatureCountValue">1</span>
         </label>
         <label>
             Mutation Rate (%):
-            <input type="range" id="mutationRate" min="0" max="10" value="2">
-            <span id="mutationRateValue">2</span>
+            <input type="range" id="mutationRate" min="0" max="10" value="1">
+            <span id="mutationRateValue">1</span>
         </label>
         <label>
             Food Abundance:
@@ -146,10 +146,15 @@
                     y: 0
                 };
                 this.size = 4;
-                this.energy = 100;
-                this.maxEnergy = 150;
+                this.energy = 30;
+                this.maxEnergy = 60;
                 this.age = 0;
                 this.lifespan = lifespan || 500 + Math.random() * 500;
+
+                // Add trail array to store previous positions
+                this.trail = [];
+                this.maxTrailLength = 2; // Number of trail segments to keep
+                this.trailUpdateRate = 2; // Update trail every N frames
 
                 // DNA: maxSpeed, maxForce, perceptionRadius, color, species
                 if (dna) {
@@ -165,8 +170,8 @@
                 }
 
                 // Initialize dynamic properties
-                this.baseMaxSpeed = this.dna.maxSpeed; // Base speed to allow scaling
-                this.baseLifespan = this.lifespan; // Base lifespan to allow scaling
+                this.baseMaxSpeed = this.dna.maxSpeed;
+                this.baseLifespan = this.lifespan;
             }
 
             update() {
@@ -181,6 +186,29 @@
                     this.velocity.y = (this.velocity.y / speed) * this.dna.maxSpeed;
                 }
 
+                // Check if creature is in safe zone
+                const inSafeZone = safeZone && safeZone.active && 
+                    distance(this.position, safeZone.position) < safeZone.radius;
+
+                // Only update trail if not in safe zone
+                if (!inSafeZone) {
+                    if (this.age % this.trailUpdateRate === 0) {
+                        this.trail.unshift({
+                            x: this.position.x,
+                            y: this.position.y,
+                            angle: Math.atan2(this.velocity.y, this.velocity.x),
+                            size: this.size + (this.energy / this.maxEnergy) * 3
+                        });
+                        
+                        if (this.trail.length > this.maxTrailLength) {
+                            this.trail.pop();
+                        }
+                    }
+                } else {
+                    // Clear trail when entering safe zone
+                    this.trail = [];
+                }
+
                 // Update position
                 this.position.x += this.velocity.x;
                 this.position.y += this.velocity.y;
@@ -189,17 +217,29 @@
                 this.acceleration.x = 0;
                 this.acceleration.y = 0;
 
-                // Wrap around edges
-                if (this.position.x > canvas.width) this.position.x = 0;
-                if (this.position.x < 0) this.position.x = canvas.width;
-                if (this.position.y > canvas.height) this.position.y = 0;
-                if (this.position.y < 0) this.position.y = canvas.height;
+                // Wrap around edges and update trail positions accordingly
+                if (this.position.x > canvas.width) {
+                    this.position.x = 0;
+                    this.trail = []; // Clear trail when wrapping
+                }
+                if (this.position.x < 0) {
+                    this.position.x = canvas.width;
+                    this.trail = []; // Clear trail when wrapping
+                }
+                if (this.position.y > canvas.height) {
+                    this.position.y = 0;
+                    this.trail = []; // Clear trail when wrapping
+                }
+                if (this.position.y < 0) {
+                    this.position.y = canvas.height;
+                    this.trail = []; // Clear trail when wrapping
+                }
 
                 // Decrease energy
                 if (this.dna.species === 'carnivore') {
-                    this.energy -= 0.26; // Predators 
+                    this.energy -= 0.08;
                 } else {
-                    this.energy -= 0.01; // Herbivores
+                    this.energy -= 0.01;
                 }
                 this.age += 1;
             }
@@ -230,7 +270,7 @@
                             this.energy = Math.min(this.energy, this.maxEnergy);
 
                             // Adjust lifespan and speed based on energy gain
-                            this.adjustAttributesOnEat(50); // Pass the energy gained
+                            this.adjustAttributesOnEat(50);
                         }
                     }
 
@@ -248,13 +288,13 @@
                     if (this.dna.species === 'herbivore') {
                         // Herbivores are attracted to the safe zone
                         const attractionForce = seek(this.position, safeZone.position, this.dna.maxSpeed);
-                        steer.x += attractionForce.x * 2.5; // Strong attraction
+                        steer.x += attractionForce.x * 2.5;
                         steer.y += attractionForce.y * 2.5;
                     } else if (this.dna.species === 'carnivore') {
                         // Carnivores are repelled from the safe zone
                         if (distToSafeZone < safeZone.radius + 50) {
                             const repulsionForce = flee(this.position, safeZone.position, this.dna.maxSpeed);
-                            steer.x += repulsionForce.x * 3; // Strong repulsion
+                            steer.x += repulsionForce.x * 3;
                             steer.y += repulsionForce.y * 3;
                         }
                     }
@@ -266,7 +306,7 @@
                         // Only reproduce inside the safe zone when it's active
                         const distToSafeZone = distance(this.position, safeZone.position);
                         if (distToSafeZone < safeZone.radius) {
-                            if (Math.random() < 0.02) { // Increased reproduction rate
+                            if (Math.random() < 0.02) {
                                 this.energy *= 0.5;
                                 const childDNA = mutateDNA(this.dna, values.mutationRate);
                                 // Create new creature inside safe zone
@@ -277,13 +317,11 @@
                                 creatures.push(new Creature(childDNA, { x, y }));
                             }
                         }
-                        // Else, do not reproduce outside safe zone
                     } else {
                         // Normal reproduction when safe zone is not active
                         if (this.energy > this.maxEnergy * 0.8 && Math.random() < 0.005) {
                             this.energy *= 0.5;
                             const childDNA = mutateDNA(this.dna, values.mutationRate);
-                            // Create new creature at parent's position
                             creatures.push(new Creature(childDNA, { x: this.position.x, y: this.position.y }));
                         }
                     }
@@ -328,7 +366,7 @@
                                 this.energy = Math.min(this.energy, this.maxEnergy);
 
                                 // Adjust lifespan and speed based on energy gain
-                                this.adjustAttributesOnEat(100); // Pass the energy gained
+                                this.adjustAttributesOnEat(100);
                             }
                         }
                     }
@@ -344,13 +382,37 @@
             }
 
             draw() {
+                // Draw trail only if not in safe zone
+                const inSafeZone = safeZone && safeZone.active && 
+                    distance(this.position, safeZone.position) < safeZone.radius;
+
+                if (!inSafeZone) {
+                    this.trail.forEach((pos, index) => {
+                        const alpha = (this.maxTrailLength - index) / this.maxTrailLength * 0.5;
+                        const color = this.dna.color.replace(/[\d.]+\)$/g, `${alpha})`);
+                        
+                        ctx.save();
+                        ctx.translate(pos.x, pos.y);
+                        ctx.rotate(pos.angle);
+                        
+                        ctx.beginPath();
+                        ctx.moveTo(0, -pos.size);
+                        ctx.lineTo(pos.size * 2, 0);
+                        ctx.lineTo(0, pos.size);
+                        ctx.closePath();
+                        ctx.fillStyle = color;
+                        ctx.fill();
+                        ctx.restore();
+                    });
+                }
+
+                // Draw current creature
                 const angle = Math.atan2(this.velocity.y, this.velocity.x);
+                const size = this.size + (this.energy / this.maxEnergy) * 3;
+
                 ctx.save();
                 ctx.translate(this.position.x, this.position.y);
                 ctx.rotate(angle);
-
-                // Adjust size based on energy
-                const size = this.size + (this.energy / this.maxEnergy) * 3;
 
                 ctx.beginPath();
                 ctx.moveTo(0, -size);
@@ -366,14 +428,10 @@
                 return this.energy <= 0 || this.age > this.lifespan;
             }
 
-            /**
-             * Adjust lifespan and maxSpeed based on energy gained from eating.
-             * @param {number} energyGained - The amount of energy gained from eating.
-             */
             adjustAttributesOnEat(energyGained) {
                 // Define how much lifespan and speed increase per unit of energy
-                const lifespanIncreasePerEnergy = 2; // Each energy unit adds 2 frames to lifespan
-                const speedIncreaseFactorPerEnergy = 0.0001; // Each energy unit increases speed by 0.1%
+                const lifespanIncreasePerEnergy = 2;
+                const speedIncreaseFactorPerEnergy = 0.0001;
 
                 // Calculate increases
                 const lifespanIncrease = energyGained * lifespanIncreasePerEnergy;
@@ -381,14 +439,14 @@
 
                 // Update lifespan and ensure it doesn't exceed a maximum value
                 this.lifespan += lifespanIncrease;
-                const maxAllowedLifespan = this.baseLifespan * 2; // Example: lifespan can at most double
+                const maxAllowedLifespan = this.baseLifespan * 2;
                 if (this.lifespan > maxAllowedLifespan) {
                     this.lifespan = maxAllowedLifespan;
                 }
 
                 // Update maxSpeed and ensure it doesn't exceed a maximum value
                 this.dna.maxSpeed = this.baseMaxSpeed + speedIncrease;
-                const maxAllowedSpeed = this.baseMaxSpeed * 2; // Example: speed can at most double
+                const maxAllowedSpeed = this.baseMaxSpeed * 2;
                 if (this.dna.maxSpeed > maxAllowedSpeed) {
                     this.dna.maxSpeed = maxAllowedSpeed;
                 }
@@ -638,7 +696,7 @@
             }
 
             // Occasionally add new food
-            if (Math.random() < 0.05 && foods.length < values.foodAbundance) {
+            if (Math.random() < 0.9 && foods.length < values.foodAbundance) {
                 foods.push(new Food());
             }
 
@@ -685,7 +743,7 @@
             }
 
             // Deactivate safe zone if herbivores are ten times carnivores
-            if (safeZone.active && herbivores >= carnivores * 10) {
+            if (safeZone.active && herbivores >= carnivores * 13) {
                 safeZone.active = false;
             }
         }

@@ -1,5 +1,7 @@
 # Underwater Biome Simulation! 🌊🦈🐠...☢️
 
+![BiomeSim](biome.png)
+
 Welcome to this little **Biome Simulation**! To get started, simply open the provided `biomeSim.html` file, copy it into an html file, and get it running in your favorite web browser. Once running, it will automatically start the simulation. You will see a control panel on the top-left corner where you can adjust the number of creatures, mutation rate, and food abundance using the sliders. For now, you can either let it go on its own, or click the mouse to add lots of food for the little blue creatures. After the screen is swarming with them and food is going fast, click the "Add Predators" button to introduce some carnivores. This is when the sim gets kind of fun to look at!
 
 Once the herbivore population is below a third the amount of the carnivore population, a safe zone will appear, and the herbivores will gather inside and reproduce until they are let free and quikcly eaten again. Once you're done watching this cycle, you can use the "Nuke" button to trigger a dramatic event that wipes out everything and resets the map. 

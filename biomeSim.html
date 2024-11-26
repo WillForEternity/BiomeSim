@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+        }
+        canvas {
+            display: block;
+        }
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 12px;
+            color: #fff;
+            font-family: 'Arial', sans-serif;
+            backdrop-filter: blur(5px);
+            z-index: 1000;
+        }
+        .controls label {
+            display: block;
+            margin: 8px 0;
+            text-shadow: 0 0 10px rgba(255,255,255,0.5);
+        }
+        .controls input {
+            width: 120px;
+        }
+        .controls button {
+            display: block;
+            margin-top: 10px;
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            border-radius: 6px;
+            color: white;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .controls button:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <!-- Control panel for user interactions -->
+    <div class="controls">
+        <label>
+            Creature Count:
+            <input type="range" id="creatureCount" min="1" max="500" value="2">
+            <span id="creatureCountValue">2</span>
+        </label>
+        <label>
+            Mutation Rate (%):
+            <input type="range" id="mutationRate" min="0" max="10" value="2">
+            <span id="mutationRateValue">2</span>
+        </label>
+        <label>
+            Food Abundance:
+            <input type="range" id="foodAbundance" min="50" max="1000" value="1000">
+            <span id="foodAbundanceValue">1000</span>
+        </label>
+        <button id="addPredators">Add Predators</button>
+        <!-- Nuke Button -->
+        <button id="nukeButton">Nuke</button>
+    </div>
+
+    <!-- Canvas for rendering the ecosystem -->
+    <canvas id="canvas"></canvas>
+
+    <script>
+        /* -------------------- Initialization and Setup -------------------- */
+
+        // Get canvas and context
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Resize canvas to fit the window
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        /* -------------------- Control Panel Setup -------------------- */
+
+        // Setup control elements and their corresponding values
+        const controls = {
+            creatureCount: document.getElementById('creatureCount'),
+            mutationRate: document.getElementById('mutationRate'),
+            foodAbundance: document.getElementById('foodAbundance')
+        };
+        const values = {};
+
+        // Initialize control values and add event listeners
+        Object.keys(controls).forEach(key => {
+            const valueElement = document.getElementById(`${key}Value`);
+            controls[key].addEventListener('input', () => {
+                valueElement.textContent = controls[key].value;
+                values[key] = parseInt(controls[key].value);
+                if (key === 'creatureCount') {
+                    adjustCreatureCount(values[key]);
+                }
+                if (key === 'foodAbundance') {
+                    adjustFoodCount(values[key]);
+                }
+            });
+            values[key] = parseInt(controls[key].value);
+        });
+
+        const addPredatorsButton = document.getElementById('addPredators');
+        addPredatorsButton.addEventListener('click', () => {
+            addPredators(10);
+        });
+
+        // Nuke Button Event Listener
+        const nukeButton = document.getElementById('nukeButton');
+        nukeButton.addEventListener('click', () => {
+            if (safeZone && safeZone.active) {
+                activateNuke();
+            } else {
+                alert("Nuke can only be activated within the safe zone!");
+            }
+        });
+
+        /* -------------------- Creature Class -------------------- */
+
+        class Creature {
+            constructor(dna, position, lifespan) {
+                this.position = position || {
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height
+                };
+                const angle = Math.random() * 2 * Math.PI;
+                this.velocity = {
+                    x: Math.cos(angle),
+                    y: Math.sin(angle)
+                };
+                this.acceleration = {
+                    x: 0,
+                    y: 0
+                };
+                this.size = 4;
+                this.energy = 100;
+                this.maxEnergy = 150;
+                this.age = 0;
+                this.lifespan = lifespan || 500 + Math.random() * 500;
+
+                // DNA: maxSpeed, maxForce, perceptionRadius, color, species
+                if (dna) {
+                    this.dna = { ...dna };
+                } else {
+                    this.dna = {
+                        maxSpeed: Math.random() * 2 + 2,
+                        maxForce: Math.random() * 0.2 + 0.05,
+                        perceptionRadius: Math.random() * 50 + 50,
+                        color: 'rgba(170, 255, 240, 0.7)',
+                        species: 'herbivore'
+                    };
+                }
+
+                // Initialize dynamic properties
+                this.baseMaxSpeed = this.dna.maxSpeed; // Base speed to allow scaling
+                this.baseLifespan = this.lifespan; // Base lifespan to allow scaling
+            }
+
+            update() {
+                // Update velocity
+                this.velocity.x += this.acceleration.x;
+                this.velocity.y += this.acceleration.y;
+
+                // Limit speed
+                const speed = Math.sqrt(this.velocity.x ** 2 + this.velocity.y ** 2);
+                if (speed > this.dna.maxSpeed) {
+                    this.velocity.x = (this.velocity.x / speed) * this.dna.maxSpeed;
+                    this.velocity.y = (this.velocity.y / speed) * this.dna.maxSpeed;
+                }
+
+                // Update position
+                this.position.x += this.velocity.x;
+                this.position.y += this.velocity.y;
+
+                // Reset acceleration
+                this.acceleration.x = 0;
+                this.acceleration.y = 0;
+
+                // Wrap around edges
+                if (this.position.x > canvas.width) this.position.x = 0;
+                if (this.position.x < 0) this.position.x = canvas.width;
+                if (this.position.y > canvas.height) this.position.y = 0;
+                if (this.position.y < 0) this.position.y = canvas.height;
+
+                // Decrease energy
+                if (this.dna.species === 'carnivore') {
+                    this.energy -= 0.26; // Predators 
+                } else {
+                    this.energy -= 0.01; // Herbivores
+                }
+                this.age += 1;
+            }
+
+            applyForce(force) {
+                this.acceleration.x += force.x;
+                this.acceleration.y += force.y;
+            }
+
+            behaviors(creatures, foods) {
+                let steer = { x: 0, y: 0 };
+
+                // Eat food
+                if (this.dna.species === 'herbivore') {
+                    let closestFood = null;
+                    let minDist = Infinity;
+                    for (let i = foods.length - 1; i >= 0; i--) {
+                        const food = foods[i];
+                        const d = distance(this.position, food.position);
+                        if (d < this.dna.perceptionRadius && d < minDist) {
+                            minDist = d;
+                            closestFood = food;
+                        }
+                        if (d < 5) {
+                            // Eat food
+                            foods.splice(i, 1);
+                            this.energy += 50;
+                            this.energy = Math.min(this.energy, this.maxEnergy);
+
+                            // Adjust lifespan and speed based on energy gain
+                            this.adjustAttributesOnEat(50); // Pass the energy gained
+                        }
+                    }
+
+                    if (closestFood) {
+                        const seekForce = seek(this.position, closestFood.position, this.dna.maxSpeed);
+                        steer.x += seekForce.x;
+                        steer.y += seekForce.y;
+                    }
+                }
+
+                // Safe Zone Attraction or Repulsion
+                if (safeZone && safeZone.active) {
+                    const distToSafeZone = distance(this.position, safeZone.position);
+
+                    if (this.dna.species === 'herbivore') {
+                        // Herbivores are attracted to the safe zone
+                        const attractionForce = seek(this.position, safeZone.position, this.dna.maxSpeed);
+                        steer.x += attractionForce.x * 2.5; // Strong attraction
+                        steer.y += attractionForce.y * 2.5;
+                    } else if (this.dna.species === 'carnivore') {
+                        // Carnivores are repelled from the safe zone
+                        if (distToSafeZone < safeZone.radius + 50) {
+                            const repulsionForce = flee(this.position, safeZone.position, this.dna.maxSpeed);
+                            steer.x += repulsionForce.x * 3; // Strong repulsion
+                            steer.y += repulsionForce.y * 3;
+                        }
+                    }
+                }
+
+                // Reproduce
+                if (this.dna.species === 'herbivore') {
+                    if (safeZone && safeZone.active) {
+                        // Only reproduce inside the safe zone when it's active
+                        const distToSafeZone = distance(this.position, safeZone.position);
+                        if (distToSafeZone < safeZone.radius) {
+                            if (Math.random() < 0.02) { // Increased reproduction rate
+                                this.energy *= 0.5;
+                                const childDNA = mutateDNA(this.dna, values.mutationRate);
+                                // Create new creature inside safe zone
+                                const angle = Math.random() * 2 * Math.PI;
+                                const r = Math.random() * safeZone.radius;
+                                const x = safeZone.position.x + r * Math.cos(angle);
+                                const y = safeZone.position.y + r * Math.sin(angle);
+                                creatures.push(new Creature(childDNA, { x, y }));
+                            }
+                        }
+                        // Else, do not reproduce outside safe zone
+                    } else {
+                        // Normal reproduction when safe zone is not active
+                        if (this.energy > this.maxEnergy * 0.8 && Math.random() < 0.005) {
+                            this.energy *= 0.5;
+                            const childDNA = mutateDNA(this.dna, values.mutationRate);
+                            // Create new creature at parent's position
+                            creatures.push(new Creature(childDNA, { x: this.position.x, y: this.position.y }));
+                        }
+                    }
+                } else if (this.dna.species === 'carnivore') {
+                    // Predators reproduce less frequently
+                    if (this.energy > this.maxEnergy * 0.8 && Math.random() < 0.005) {
+                        this.energy *= 0.5;
+                        const childDNA = mutateDNA(this.dna, values.mutationRate);
+                        creatures.push(new Creature(childDNA, { x: this.position.x, y: this.position.y }));
+                    }
+                }
+
+                // Avoid predators
+                if (this.dna.species === 'herbivore') {
+                    for (let other of creatures) {
+                        if (other.dna.species === 'carnivore') {
+                            const d = distance(this.position, other.position);
+                            if (d < this.dna.perceptionRadius) {
+                                const fleeForce = flee(this.position, other.position, this.dna.maxSpeed);
+                                steer.x += fleeForce.x * 5;
+                                steer.y += fleeForce.y * 5;
+                            }
+                        }
+                    }
+                }
+
+                // Hunt prey
+                if (this.dna.species === 'carnivore') {
+                    let closestPrey = null;
+                    let minDist = Infinity;
+                    for (let other of creatures) {
+                        if (other.dna.species === 'herbivore') {
+                            const d = distance(this.position, other.position);
+                            if (d < this.dna.perceptionRadius && d < minDist) {
+                                minDist = d;
+                                closestPrey = other;
+                            }
+                            if (d < 5) {
+                                // Eat prey
+                                other.energy = 0;
+                                this.energy += 100;
+                                this.energy = Math.min(this.energy, this.maxEnergy);
+
+                                // Adjust lifespan and speed based on energy gain
+                                this.adjustAttributesOnEat(100); // Pass the energy gained
+                            }
+                        }
+                    }
+                    if (closestPrey) {
+                        const huntForce = seek(this.position, closestPrey.position, this.dna.maxSpeed);
+                        steer.x += huntForce.x;
+                        steer.y += huntForce.y;
+                    }
+                }
+
+                steer = limitForce(steer, this.dna.maxForce);
+                this.applyForce(steer);
+            }
+
+            draw() {
+                const angle = Math.atan2(this.velocity.y, this.velocity.x);
+                ctx.save();
+                ctx.translate(this.position.x, this.position.y);
+                ctx.rotate(angle);
+
+                // Adjust size based on energy
+                const size = this.size + (this.energy / this.maxEnergy) * 3;
+
+                ctx.beginPath();
+                ctx.moveTo(0, -size);
+                ctx.lineTo(size * 2, 0);
+                ctx.lineTo(0, size);
+                ctx.closePath();
+                ctx.fillStyle = this.dna.color;
+                ctx.fill();
+                ctx.restore();
+            }
+
+            isDead() {
+                return this.energy <= 0 || this.age > this.lifespan;
+            }
+
+            /**
+             * Adjust lifespan and maxSpeed based on energy gained from eating.
+             * @param {number} energyGained - The amount of energy gained from eating.
+             */
+            adjustAttributesOnEat(energyGained) {
+                // Define how much lifespan and speed increase per unit of energy
+                const lifespanIncreasePerEnergy = 2; // Each energy unit adds 2 frames to lifespan
+                const speedIncreaseFactorPerEnergy = 0.0001; // Each energy unit increases speed by 0.1%
+
+                // Calculate increases
+                const lifespanIncrease = energyGained * lifespanIncreasePerEnergy;
+                const speedIncrease = this.baseMaxSpeed * speedIncreaseFactorPerEnergy * energyGained;
+
+                // Update lifespan and ensure it doesn't exceed a maximum value
+                this.lifespan += lifespanIncrease;
+                const maxAllowedLifespan = this.baseLifespan * 2; // Example: lifespan can at most double
+                if (this.lifespan > maxAllowedLifespan) {
+                    this.lifespan = maxAllowedLifespan;
+                }
+
+                // Update maxSpeed and ensure it doesn't exceed a maximum value
+                this.dna.maxSpeed = this.baseMaxSpeed + speedIncrease;
+                const maxAllowedSpeed = this.baseMaxSpeed * 2; // Example: speed can at most double
+                if (this.dna.maxSpeed > maxAllowedSpeed) {
+                    this.dna.maxSpeed = maxAllowedSpeed;
+                }
+            }
+        }
+
+        /* -------------------- Food Class -------------------- */
+
+        class Food {
+            constructor(x, y) {
+                this.position = {
+                    x: x || Math.random() * canvas.width,
+                    y: y || Math.random() * canvas.height
+                };
+                this.size = 3;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.position.x, this.position.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 255, 0, 0.5)';
+                ctx.fill();
+            }
+        }
+
+        /* -------------------- Safe Zone Class -------------------- */
+
+        class SafeZone {
+            constructor() {
+                this.position = { x: canvas.width / 2, y: canvas.height / 2 };
+                this.radius = 150; // Radius of the safe zone
+                this.active = false;
+            }
+
+            draw() {
+                if (this.active) {
+                    ctx.beginPath();
+                    ctx.arc(this.position.x, this.position.y, this.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(0, 100, 255, 0.2)';
+                    ctx.fill();
+                    ctx.strokeStyle = 'rgba(0, 100, 255, 0.5)';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+            }
+        }
+
+        /* -------------------- Utility Functions -------------------- */
+
+        function distance(a, b) {
+            return Math.hypot(a.x - b.x, a.y - b.y);
+        }
+
+        function seek(position, target, maxSpeed) {
+            const desired = {
+                x: target.x - position.x,
+                y: target.y - position.y
+            };
+            const d = Math.sqrt(desired.x ** 2 + desired.y ** 2);
+            if (d === 0) return { x: 0, y: 0 }; // Prevent division by zero
+            desired.x = (desired.x / d) * maxSpeed;
+            desired.y = (desired.y / d) * maxSpeed;
+            return {
+                x: desired.x - 0,
+                y: desired.y - 0
+            };
+        }
+
+        function flee(position, target, maxSpeed) {
+            const desired = {
+                x: position.x - target.x,
+                y: position.y - target.y
+            };
+            const d = Math.sqrt(desired.x ** 2 + desired.y ** 2);
+            if (d === 0) return { x: 0, y: 0 }; // Prevent division by zero
+            desired.x = (desired.x / d) * maxSpeed;
+            desired.y = (desired.y / d) * maxSpeed;
+            return {
+                x: desired.x - 0,
+                y: desired.y - 0
+            };
+        }
+
+        function limitForce(force, max) {
+            const magnitude = Math.sqrt(force.x ** 2 + force.y ** 2);
+            if (magnitude > max) {
+                force.x = (force.x / magnitude) * max;
+                force.y = (force.y / magnitude) * max;
+            }
+            return force;
+        }
+
+        function mutateDNA(dna, mutationRate) {
+            const newDNA = { ...dna };
+            const mutationFactor = mutationRate / 100;
+            newDNA.maxSpeed += (Math.random() * 2 - 1) * newDNA.maxSpeed * mutationFactor;
+            newDNA.maxForce += (Math.random() * 2 - 1) * newDNA.maxForce * mutationFactor;
+            newDNA.perceptionRadius += (Math.random() * 2 - 1) * newDNA.perceptionRadius * mutationFactor;
+
+            // Ensure attributes stay within reasonable bounds
+            newDNA.maxSpeed = Math.max(1, newDNA.maxSpeed);
+            newDNA.maxForce = Math.max(0.01, newDNA.maxForce);
+            newDNA.perceptionRadius = Math.max(10, newDNA.perceptionRadius);
+
+            return newDNA;
+        }
+
+        /* -------------------- Event Listeners -------------------- */
+
+        const mouse = { x: null, y: null };
+        canvas.addEventListener('mousemove', (event) => {
+            mouse.x = event.x;
+            mouse.y = event.y;
+            // Place food at mouse position while holding down left mouse button
+            if (event.buttons === 1) {
+                foods.push(new Food(mouse.x, mouse.y));
+            }
+        });
+
+        // Add a huge lump of food on mouse click
+        canvas.addEventListener('click', (event) => {
+            const numFoodItems = 1500; // Number of food items to create
+            const radius = 150; // Radius within which to spread the food
+            for (let i = 0; i < numFoodItems; i++) {
+                const angle = Math.random() * 2 * Math.PI;
+                const distanceFromClick = Math.random() * radius;
+                const x = event.x + Math.cos(angle) * distanceFromClick;
+                const y = event.y + Math.sin(angle) * distanceFromClick;
+                foods.push(new Food(x, y));
+            }
+        });
+
+        /* -------------------- Ecosystem Setup -------------------- */
+
+        let creatures = [];
+        let foods = [];
+        let safeZone = new SafeZone(); // Initialize the safe zone
+
+        function initializeEcosystem() {
+            creatures = [];
+            foods = [];
+            safeZone = new SafeZone();
+            for (let i = 0; i < values.creatureCount; i++) {
+                creatures.push(new Creature());
+            }
+            for (let i = 0; i < values.foodAbundance; i++) {
+                foods.push(new Food());
+            }
+        }
+        initializeEcosystem();
+
+        function adjustCreatureCount(count) {
+            if (count > creatures.length) {
+                for (let i = creatures.length; i < count; i++) {
+                    creatures.push(new Creature());
+                }
+            } else {
+                creatures.splice(count);
+            }
+        }
+
+        function adjustFoodCount(count) {
+            if (count > foods.length) {
+                for (let i = foods.length; i < count; i++) {
+                    foods.push(new Food());
+                }
+            } else {
+                foods.splice(count);
+            }
+        }
+
+        function addPredators(count) {
+            for (let i = 0; i < count; i++) {
+                const predatorDNA = {
+                    maxSpeed: Math.random() * 2 + 3,
+                    maxForce: Math.random() * 0.3 + 0.1,
+                    perceptionRadius: Math.random() * 100 + 50,
+                    color: 'rgba(255, 0, 0, 0.7)',
+                    species: 'carnivore'
+                };
+                const lifespan = 300 + Math.random() * 200; // Shorter lifespan for predators
+                creatures.push(new Creature(predatorDNA, null, lifespan));
+            }
+        }
+
+        /* -------------------- Nuke Functionality -------------------- */
+
+        let explosion = null; // Variable to hold explosion state
+
+        function activateNuke() {
+            // Start the explosion from the safe zone center
+            explosion = {
+                x: safeZone.position.x,
+                y: safeZone.position.y,
+                radius: 0,
+                maxRadius: Math.hypot(canvas.width, canvas.height) // Enough to cover the whole screen
+            };
+        }
+
+        function updateExplosion() {
+            if (explosion) {
+                // Increase the explosion radius
+                explosion.radius += 5;
+
+                // Draw the explosion
+                ctx.fillStyle = `rgba(0, 255, 0, ${1 - explosion.radius / explosion.maxRadius})`;
+                ctx.beginPath();
+                ctx.arc(explosion.x, explosion.y, explosion.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Check for creatures within the explosion radius
+                for (let i = creatures.length - 1; i >= 0; i--) {
+                    const creature = creatures[i];
+                    const dist = distance(explosion, creature.position);
+                    if (dist < explosion.radius) {
+                        if (creature.dna.species === 'carnivore') {
+                            // Kill 90% of predators
+                            if (Math.random() < 0.9) {
+                                creatures.splice(i, 1);
+                            } else {
+                                // Reset energy to original value
+                                creature.energy = creature.maxEnergy;
+                            }
+                        } else {
+                            // Kill all other creatures (herbivores)
+                            creatures.splice(i, 1);
+                        }
+                    }
+                }
+
+                // End the explosion when it covers the whole screen
+                if (explosion.radius >= explosion.maxRadius) {
+                    explosion = null;
+                }
+            }
+        }
+
+        /* -------------------- Animation Loop -------------------- */
+
+        function animate() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Update and draw food
+            for (let food of foods) {
+                food.draw();
+            }
+
+            // Occasionally add new food
+            if (Math.random() < 0.05 && foods.length < values.foodAbundance) {
+                foods.push(new Food());
+            }
+
+            // Update and draw creatures
+            for (let i = creatures.length - 1; i >= 0; i--) {
+                const creature = creatures[i];
+                creature.behaviors(creatures, foods);
+                creature.update();
+                creature.draw();
+
+                if (creature.isDead()) {
+                    creatures.splice(i, 1);
+                }
+            }
+
+            // Update and draw the explosion if active
+            if (explosion) {
+                updateExplosion();
+            }
+
+            // Draw the safe zone if active
+            if (safeZone.active) {
+                safeZone.draw();
+            }
+
+            // Manage safe zone activation and deactivation
+            manageSafeZone();
+
+            // Display statistics
+            displayStats();
+
+            requestAnimationFrame(animate);
+        }
+
+        /* -------------------- Safe Zone Management -------------------- */
+
+        function manageSafeZone() {
+            const herbivores = creatures.filter(c => c.dna.species === 'herbivore').length;
+            const carnivores = creatures.filter(c => c.dna.species === 'carnivore').length;
+
+            // Activate safe zone if herbivores are less than one third of carnivores
+            if (!safeZone.active && herbivores < carnivores / 3) {
+                safeZone.active = true;
+            }
+
+            // Deactivate safe zone if herbivores are ten times carnivores
+            if (safeZone.active && herbivores >= carnivores * 10) {
+                safeZone.active = false;
+            }
+        }
+
+        /* -------------------- Display Statistics -------------------- */
+
+        function displayStats() {
+            ctx.fillStyle = 'white';
+            ctx.font = '14px Arial';
+            ctx.fillText(`Creatures: ${creatures.length}`, 20, canvas.height - 80);
+            ctx.fillText(`Food: ${foods.length}`, 20, canvas.height - 60);
+
+            const herbivores = creatures.filter(c => c.dna.species === 'herbivore').length;
+            const carnivores = creatures.filter(c => c.dna.species === 'carnivore').length;
+            ctx.fillText(`Herbivores: ${herbivores}`, 20, canvas.height - 40);
+            ctx.fillText(`Carnivores: ${carnivores}`, 20, canvas.height - 20);
+
+            // Indicate if the safe zone is active
+            if (safeZone.active) {
+                ctx.fillText(`Safe Zone Active`, 150, canvas.height - 20);
+            }
+        }
+
+        /* -------------------- Initialization -------------------- */
+
+        // Start the animation loop
+        animate();
+    </script>
+</body>
+</html>

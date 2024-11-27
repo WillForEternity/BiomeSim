@@ -249,7 +249,7 @@
 
                 // Decrease energy
                 if (this.dna.species === 'carnivore') {
-                    this.energy -= 0.14;
+                    this.energy -= 0.05;
                 } else {
                     this.energy -= 0.01;
                 }
@@ -319,7 +319,7 @@
                         // Only reproduce inside the safe zone when it's active
                         const distToSafeZone = distance(this.position, safeZone.position);
                         if (distToSafeZone < safeZone.radius) {
-                            if (Math.random() < 0.015) {
+                            if (Math.random() < 0.02) {
                                 this.energy *= 0.5;
                                 const childDNA = mutateDNA(this.dna, values.mutationRate);
                                 // Create new creature inside safe zone
@@ -340,7 +340,7 @@
                     }
                 } else if (this.dna.species === 'carnivore') {
                     // Predators reproduce less frequently
-                    if (this.energy > this.maxEnergy * 0.8 && Math.random() < 0.002) {
+                    if (this.energy > this.maxEnergy * 0.8 && Math.random() < .0005) {
                         this.energy *= 0.5;
                         const childDNA = mutateDNA(this.dna, values.mutationRate);
                         creatures.push(new Creature(childDNA, { x: this.position.x, y: this.position.y }));
@@ -355,19 +355,19 @@
                             const d = distance(this.position, other.position);
                             closestPredatorDistance = Math.min(closestPredatorDistance, d);
                             
-                            if (d < this.dna.perceptionRadius / 3) {
+                            if (d < this.dna.perceptionRadius / 4) {
                                 nearPredator = true;
                                 const fleeForce = flee(this.position, other.position, this.dna.maxSpeed);
-                                steer.x += fleeForce.x * 8;
-                                steer.y += fleeForce.y * 8;
+                                steer.x += fleeForce.x * 20;
+                                steer.y += fleeForce.y * 20;
                             }
                         }
                     }
                     
                     // Apply speed boost when near predators
                     if (nearPredator) {
-                        // Boost speed by 50% when near predators
-                        this.dna.maxSpeed = this.baseMaxSpeed * 2;
+                        // Boost speed by 3x when near predators
+                        this.dna.maxSpeed = this.baseMaxSpeed * 3;
                     } else {
                         // Return to normal speed when safe
                         this.dna.maxSpeed = this.baseMaxSpeed;
@@ -429,8 +429,8 @@
                         
                         // Create gentle attraction to the center of nearby herbivores
                         const socialForce = seek(this.position, {x: centerX, y: centerY}, this.dna.maxSpeed);
-                        steer.x += socialForce.x * 0.4;
-                        steer.y += socialForce.y * 0.1;
+                        steer.x += socialForce.x * 0.45;
+                        steer.y += socialForce.y * 0.05;
                     }
                 }
 
@@ -808,9 +808,9 @@
         
         const graphConfig = {
             updateInterval: 1000,    // Update every second
-            maxPoints: 30,          // 30 points for 30 seconds of history
+            maxPoints: 600,          // 600 points for 10 minutes of history
             graphHeight: 100,       // Graph height
-            graphWidth: 300,        // Graph width
+            graphWidth: 1330,        // Graph width
             padding: 10,           // Padding from edges
             maxHerbivores: 1000,   // Expected maximum herbivore population
             maxCarnivores: 100     // Expected maximum carnivore population
@@ -916,6 +916,8 @@
                 ctx.fillText(`Safe Zone Active`, 150, canvas.height - 20);
             }
         }
+
+        /* -------------------- Graphing Functions -------------------- */
 
         function updatePopulationHistoryGraph() {
             const currentTime = Date.now();

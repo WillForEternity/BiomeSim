@@ -61,8 +61,8 @@
         </label>
         <label>
             Food Abundance:
-            <input type="range" id="foodAbundance" min="50" max="1000" value="1000">
-            <span id="foodAbundanceValue">1000</span>
+            <input type="range" id="foodAbundance" min="50" max="1500" value="1500">
+            <span id="foodAbundanceValue">1500</span>
         </label>
         <button id="addPredators">Add Predators</button>
         <!-- Nuke Button -->
@@ -341,8 +341,8 @@
                             const d = distance(this.position, other.position);
                             if (d < this.dna.perceptionRadius) {
                                 const fleeForce = flee(this.position, other.position, this.dna.maxSpeed);
-                                steer.x += fleeForce.x * 5;
-                                steer.y += fleeForce.y * 5;
+                                steer.x += fleeForce.x * 6;
+                                steer.y += fleeForce.y * 6;
                             }
                         }
                     }

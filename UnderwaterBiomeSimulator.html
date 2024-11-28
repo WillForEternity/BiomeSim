@@ -1,0 +1,1131 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+        }
+        canvas {
+            display: block;
+        }
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 12px;
+            color: #fff;
+            font-family: 'Arial', sans-serif;
+            backdrop-filter: blur(5px);
+            z-index: 1000;
+        }
+        .controls label {
+            display: block;
+            margin: 8px 0;
+            text-shadow: 0 0 10px rgba(255,255,255,0.5);
+        }
+        .controls input {
+            width: 120px;
+        }
+        .controls button {
+            display: block;
+            margin-top: 10px;
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            border-radius: 6px;
+            color: white;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .controls button:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <!-- Control panel for user interactions -->
+    <div class="controls">
+        <label>
+            Creature Count:
+            <input type="range" id="creatureCount" min="1" max="1000" value="1">
+            <span id="creatureCountValue">1</span>
+        </label>
+        <label>
+            Mutation Rate (%):
+            <input type="range" id="mutationRate" min="0" max="10" value="1">
+            <span id="mutationRateValue">1</span>
+        </label>
+        <label>
+            Food Abundance:
+            <input type="range" id="foodAbundance" min="50" max="1500" value="1500">
+            <span id="foodAbundanceValue">1500</span>
+        </label>
+        <button id="addPredators">Add Predators</button>
+        <button id="nukeButton">Nuke</button>
+        <button id="quickshoalButton">Quickshoal</button>
+    </div>
+
+    <!-- Canvas for rendering the ecosystem -->
+    <canvas id="canvas"></canvas>
+
+    <script>
+        /* -------------------- Initialization and Setup -------------------- */
+
+        // Get canvas and context
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Resize canvas to fit the window
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        /* -------------------- Control Panel Setup -------------------- */
+
+        // Setup control elements and their corresponding values
+        const controls = {
+            creatureCount: document.getElementById('creatureCount'),
+            mutationRate: document.getElementById('mutationRate'),
+            foodAbundance: document.getElementById('foodAbundance')
+        };
+        const values = {};
+
+        // Initialize control values and add event listeners
+        Object.keys(controls).forEach(key => {
+            const valueElement = document.getElementById(`${key}Value`);
+            controls[key].addEventListener('input', () => {
+                valueElement.textContent = controls[key].value;
+                values[key] = parseInt(controls[key].value);
+                if (key === 'creatureCount') {
+                    adjustCreatureCount(values[key]);
+                }
+                if (key === 'foodAbundance') {
+                    adjustFoodCount(values[key]);
+                }
+            });
+            values[key] = parseInt(controls[key].value);
+        });
+
+        const addPredatorsButton = document.getElementById('addPredators');
+        addPredatorsButton.addEventListener('click', () => {
+            addPredators(2);
+        });
+
+        // Nuke Button Event Listener
+        const nukeButton = document.getElementById('nukeButton');
+        nukeButton.addEventListener('click', () => {
+            if (safeZone && safeZone.active) {
+                activateNuke();
+            } else {
+                alert("Nuke can only be activated within the safe zone!");
+            }
+        });
+
+        /* -------------------- Creature Class -------------------- */
+
+        class Creature {
+            constructor(dna, position, lifespan) {
+                this.position = position || {
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height
+                };
+                const angle = Math.random() * 2 * Math.PI;
+                this.velocity = {
+                    x: Math.cos(angle),
+                    y: Math.sin(angle)
+                };
+                this.acceleration = {
+                    x: 0,
+                    y: 0
+                };
+                
+                // Set size based on species
+                if (dna && dna.species === 'carnivore') {
+                    this.size = 7; // Fixed size for predators
+                } else {
+                    this.size = 5; // Variable size for herbivores
+                }
+                
+                this.energy = 30;
+                this.maxEnergy = 60;
+                this.age = 0;
+                this.lifespan = lifespan || 500 + Math.random() * 500;
+
+                // Add trail array to store previous positions
+                this.trail = [];
+                this.maxTrailLength = 2; // Number of trail segments to keep
+                this.trailUpdateRate = 2; // Update trail every N frames
+
+                // DNA: maxSpeed, maxForce, perceptionRadius, color, species
+                if (dna) {
+                    this.dna = { ...dna };
+                } else {
+                    this.dna = {
+                        maxSpeed: Math.random() * 2 + 2,
+                        maxForce: Math.random() * 0.2 + 0.05,
+                        perceptionRadius: Math.random() * 50 + 50,
+                        color: 'rgba(170, 255, 240, 0.7)',
+                        species: 'herbivore'
+                    };
+                }
+
+                // Initialize dynamic properties
+                this.baseMaxSpeed = this.dna.maxSpeed;
+                this.baseLifespan = this.lifespan;
+
+                this.lastAteTime = 0;
+                this.foodSearchCooldown = 200;
+            }
+
+            update() {
+                // Update velocity
+                this.velocity.x += this.acceleration.x;
+                this.velocity.y += this.acceleration.y;
+
+                // Limit speed
+                const speed = Math.sqrt(this.velocity.x ** 2 + this.velocity.y ** 2);
+                if (speed > this.dna.maxSpeed) {
+                    this.velocity.x = (this.velocity.x / speed) * this.dna.maxSpeed;
+                    this.velocity.y = (this.velocity.y / speed) * this.dna.maxSpeed;
+                }
+
+                // Check if creature is in safe zone
+                const inSafeZone = safeZone && safeZone.active && 
+                    distance(this.position, safeZone.position) < safeZone.radius;
+
+                // Only update trail if not in safe zone
+                if (!inSafeZone) {
+                    if (this.age % this.trailUpdateRate === 0) {
+                        // Determine trail size based on species
+                        const trailSize = this.dna.species === 'carnivore' 
+                            ? this.size 
+                            : this.size + (this.energy / this.maxEnergy) * 3;
+
+                        this.trail.unshift({
+                            x: this.position.x,
+                            y: this.position.y,
+                            angle: Math.atan2(this.velocity.y, this.velocity.x),
+                            size: trailSize
+                        });
+                        
+                        if (this.trail.length > this.maxTrailLength) {
+                            this.trail.pop();
+                        }
+                    }
+                } else {
+                    // Clear trail when entering safe zone
+                    this.trail = [];
+                }
+
+                // Update position
+                this.position.x += this.velocity.x;
+                this.position.y += this.velocity.y;
+
+                // Reset acceleration
+                this.acceleration.x = 0;
+                this.acceleration.y = 0;
+
+                // Wrap around edges and update trail positions accordingly
+                if (this.position.x > canvas.width) {
+                    this.position.x = 0;
+                    this.trail = []; // Clear trail when wrapping
+                }
+                if (this.position.x < 0) {
+                    this.position.x = canvas.width;
+                    this.trail = []; // Clear trail when wrapping
+                }
+                if (this.position.y > canvas.height) {
+                    this.position.y = 0;
+                    this.trail = []; // Clear trail when wrapping
+                }
+                if (this.position.y < 0) {
+                    this.position.y = canvas.height;
+                    this.trail = []; // Clear trail when wrapping
+                }
+
+                // Decrease energy
+                if (this.dna.species === 'carnivore') {
+                    this.energy -= 0.0005;
+                } else {
+                    this.energy -= 0.01;
+                }
+                this.age += 1;
+            }
+
+            applyForce(force) {
+                this.acceleration.x += force.x;
+                this.acceleration.y += force.y;
+            }
+
+            behaviors(creatures, foods) {
+                let steer = { x: 0, y: 0 };
+                let nearPredator = false; // Flag to track if predators are nearby
+
+                // Eat food
+                if (this.dna.species === 'herbivore') {
+                    const currentTime = Date.now();
+                    const canSearchFood = currentTime - this.lastAteTime > this.foodSearchCooldown;
+                    
+                    let closestFood = null;
+                    let minDist = Infinity;
+
+                    for (let i = foods.length - 1; i >= 0; i--) {
+                        const food = foods[i];
+                        const d = distance(this.position, food.position);
+                        
+                        // Only look for new food if cooldown has passed
+                        if (canSearchFood && d < this.dna.perceptionRadius * 2 && d < minDist) {
+                            minDist = d;
+                            closestFood = food;
+                        }
+
+                        if (d < 5) {
+                            // Eat food
+                            foods.splice(i, 1);
+                            this.energy += 50;
+                            this.energy = Math.min(this.energy, this.maxEnergy);
+                            this.adjustAttributesOnEat(50);
+                            this.lastAteTime = currentTime; // Reset the cooldown timer
+                        }
+                    }
+
+                    // Only seek food if cooldown has passed
+                    if (canSearchFood && closestFood) {
+                        const seekForce = seek(this.position, closestFood.position, this.dna.maxSpeed);
+                        steer.x += seekForce.x;
+                        steer.y += seekForce.y;
+                    }
+                }
+
+                // Safe Zone Attraction or Repulsion
+                if (safeZone && safeZone.active) {
+                    const distToSafeZone = distance(this.position, safeZone.position);
+
+                    if (this.dna.species === 'herbivore') {
+                        // Herbivores are attracted to the safe zone
+                        const attractionForce = seek(this.position, safeZone.position, this.dna.maxSpeed);
+                        steer.x += attractionForce.x * 2.5;
+                        steer.y += attractionForce.y * 2.5;
+                    } else if (this.dna.species === 'carnivore') {
+                        // Carnivores are repelled from the safe zone
+                        if (distToSafeZone < safeZone.radius + 50) {
+                            const repulsionForce = flee(this.position, safeZone.position, this.dna.maxSpeed);
+                            steer.x += repulsionForce.x * 30;
+                            steer.y += repulsionForce.y * 30;
+                        }
+                    }
+                }
+
+                // Reproduce
+                if (this.dna.species === 'herbivore') {
+                    if (safeZone && safeZone.active) {
+                        // Only reproduce inside the safe zone when it's active
+                        const distToSafeZone = distance(this.position, safeZone.position);
+                        if (distToSafeZone < safeZone.radius) {
+                            if (Math.random() < 0.02) {
+                                this.energy *= 0.5;
+                                const childDNA = mutateDNA(this.dna, values.mutationRate);
+                                // Create new creature inside safe zone
+                                const angle = Math.random() * 2 * Math.PI;
+                                const r = Math.random() * safeZone.radius;
+                                const x = safeZone.position.x + r * Math.cos(angle);
+                                const y = safeZone.position.y + r * Math.sin(angle);
+                                creatures.push(new Creature(childDNA, { x, y }));
+                            }
+                        }
+                    } else {
+                        // Normal reproduction when safe zone is not active
+                        if (this.energy > this.maxEnergy * 0.8 && Math.random() < 0.005) {
+                            this.energy *= 0.5;
+                            // Store real speed before reproduction
+                            const realMaxSpeed = this.dna.maxSpeed;
+                            this.dna.maxSpeed = this.baseMaxSpeed;
+                            const childDNA = mutateDNA(this.dna, values.mutationRate);
+                            creatures.push(new Creature(childDNA, { x: this.position.x, y: this.position.y }));
+                            this.dna.maxSpeed = realMaxSpeed;
+                        }
+                    }
+                } else if (this.dna.species === 'carnivore') {
+                    // Predators reproduce less frequently
+                    if (this.energy > this.maxEnergy * 0.8 && Math.random() < .0005) {
+                        this.energy *= 0.5;
+                        const childDNA = mutateDNA(this.dna, values.mutationRate);
+                        creatures.push(new Creature(childDNA, { x: this.position.x, y: this.position.y }));
+                    }
+                }
+
+                // Avoid predators with enhanced speed boost
+                if (this.dna.species === 'herbivore') {
+                    let closestPredatorDistance = Infinity;
+                    for (let other of creatures) {
+                        if (other.dna.species === 'carnivore') {
+                            const d = distance(this.position, other.position);
+                            closestPredatorDistance = Math.min(closestPredatorDistance, d);
+                            
+                            if (d < this.dna.perceptionRadius) {
+                                nearPredator = true;
+                                const fleeForce = flee(this.position, other.position, this.dna.maxSpeed);
+                                steer.x += fleeForce.x * 20;
+                                steer.y += fleeForce.y * 20;
+                            }
+                        }
+                    }
+                    
+                    // Apply speed boost when near predators
+                    if (nearPredator) {
+                        // Boost speed by 3x when near predators
+                        this.dna.maxSpeed = this.baseMaxSpeed * 6;
+                    } else {
+                        // Return to normal speed when safe
+                        this.dna.maxSpeed = this.baseMaxSpeed;
+                    }
+                }
+
+                // Hunt prey
+                // Enhanced Hunt prey
+                if (this.dna.species === 'carnivore') {
+                    let preyCount = 0;
+                    let herdCenter = { x: 0, y: 0 };
+                    let closestPrey = null;
+                    let minDist = Infinity;
+
+                    // Analyze nearby herbivores
+                    for (let other of creatures) {
+                        if (other.dna.species === 'herbivore') {
+                            const d = distance(this.position, other.position);
+                            if (d < this.dna.perceptionRadius) {
+                                preyCount++;
+                                herdCenter.x += other.position.x;
+                                herdCenter.y += other.position.y;
+
+                                if (d < minDist) {
+                                    minDist = d;
+                                    closestPrey = other;
+                                }
+
+                                if (d < this.size * 1.5) {
+                                    // Eat prey
+                                    other.energy = 0;
+                                    this.energy += 100;
+                                    this.energy = Math.min(this.energy, this.maxEnergy);
+
+                                    // Adjust lifespan and speed based on energy gain
+                                    this.adjustAttributesOnEat(150);
+
+                                    // Increase size slightly when eating
+                                    this.size = Math.min(this.size + 0.5, 10);
+                                }
+                            }
+                        }
+                    }
+
+                    if (preyCount > 0) {
+                        // Calculate the center of the herd
+                        herdCenter.x /= preyCount;
+                        herdCenter.y /= preyCount;
+
+                        // Adjust hunting behavior based on herd size
+                        // The larger the herd, the stronger the attraction
+                        const herdInfluence = Math.min(preyCount / 50, 5); // Cap the influence to prevent excessive force
+
+                        const herdForce = seek(this.position, herdCenter, this.dna.maxSpeed);
+                        steer.x += herdForce.x * herdInfluence;
+                        steer.y += herdForce.y * herdInfluence;
+                    }
+                }
+
+                if (this.dna.species === 'herbivore' && creatures.length > 1) {
+                    let centerX = 0;
+                    let centerY = 0;
+                    let count = 0;
+
+                    if (quickshoalActive) {
+                        // During quickshoal, use canvas center
+                        centerX = canvas.width / 2;
+                        centerY = canvas.height / 2;
+                        count = 1;  // Set count to 1 to ensure we use these coordinates
+                    } else {
+                        // Normal behavior - calculate center of nearby herbivores
+                        for (let other of creatures) {
+                            if (other !== this && other.dna.species === 'herbivore') {
+                                const d = distance(this.position, other.position);
+                                if (d < this.dna.perceptionRadius*3) {
+                                    centerX += other.position.x;
+                                    centerY += other.position.y;
+                                    count++;
+                                }
+                            }
+                        }
+                        if (count > 0) {
+                            centerX = centerX / count;
+                            centerY = centerY / count;
+                        }
+                    }
+
+                    if (count > 0) {
+                        
+                        // Create attraction to the center point (either canvas center or group center)
+                        const socialForce = seek(this.position, {x: centerX, y: centerY}, this.dna.maxSpeed * 2);
+                        // Adjust social force based on quickshoal state
+                        let socialForceMagnitudeX;
+                        let socialForceMagnitudeY;
+                        if (quickshoalActive) {
+                            // Much stronger attraction during quickshoal
+                            socialForceMagnitudeX = 5;
+                            socialForceMagnitudeY = 1;
+                        } else {
+                            // Normal attraction
+                            socialForceMagnitudeX = 0.6;
+                            socialForceMagnitudeY = 0.1;
+                        }
+                        
+                        steer.x += socialForce.x * socialForceMagnitudeX;
+                        steer.y += socialForce.y * socialForceMagnitudeY;
+                    }
+                }
+
+
+                steer = limitForce(steer, this.dna.maxForce);
+                this.applyForce(steer);
+
+                if (this.dna.species === 'herbivore' && !nearPredator) {
+                    // Force velocity back to base speed limits if we're not near a predator
+                    const currentSpeed = Math.sqrt(this.velocity.x ** 2 + this.velocity.y ** 2);
+                    if (currentSpeed > this.baseMaxSpeed) {
+                        this.velocity.x = (this.velocity.x / currentSpeed) * this.baseMaxSpeed;
+                        this.velocity.y = (this.velocity.y / currentSpeed) * this.baseMaxSpeed;
+                    }
+                }
+            }
+
+            draw() {
+                // Calculate how close to death the creature is (0 = new, 1 = dead)
+                const ageRatio = this.age / this.lifespan;
+                
+                // Get base color components
+                let baseColor = this.dna.species === 'carnivore' 
+                    ? { r: 255, g: 0, b: 0 }     // Red for carnivores
+                    : { r: 170, g: 255, b: 240 }; // Cyan for herbivores
+                
+                // Darken the color based on age
+                const darkenFactor = 1 - (ageRatio * 0.7); // 0.7 controls how dark it gets
+                const color = `rgba(
+                    ${Math.floor(baseColor.r * darkenFactor)},
+                    ${Math.floor(baseColor.g * darkenFactor)},
+                    ${Math.floor(baseColor.b * darkenFactor)},
+                    0.7
+                )`;
+
+                // Draw trail only if not in safe zone
+                const inSafeZone = safeZone && safeZone.active && 
+                    distance(this.position, safeZone.position) < safeZone.radius;
+
+                if (!inSafeZone) {
+                    this.trail.forEach((pos, index) => {
+                        const alpha = (this.maxTrailLength - index) / this.maxTrailLength * 0.5;
+                        // Use the age-darkened color for trails too
+                        const trailColor = color.replace('0.7)', `${alpha})`);
+                        
+                        ctx.save();
+                        ctx.translate(pos.x, pos.y);
+                        ctx.rotate(pos.angle);
+                        
+                        ctx.beginPath();
+                        ctx.moveTo(0, -this.size);
+                        ctx.lineTo(this.size * 2, 0);
+                        ctx.lineTo(0, this.size);
+                        ctx.closePath();
+                        ctx.fillStyle = trailColor;
+                        ctx.fill();
+                        ctx.restore();
+                    });
+                }
+
+                // Draw current creature
+                const angle = Math.atan2(this.velocity.y, this.velocity.x);
+
+                ctx.save();
+                ctx.translate(this.position.x, this.position.y);
+                ctx.rotate(angle);
+
+                ctx.beginPath();
+                ctx.moveTo(0, -this.size);
+                ctx.lineTo(this.size * 2, 0);
+                ctx.lineTo(0, this.size);
+                ctx.closePath();
+                ctx.fillStyle = color;
+                ctx.fill();
+                ctx.restore();
+            }
+
+
+            isDead() {
+                return this.energy <= 0 || this.age > this.lifespan;
+            }
+
+            adjustAttributesOnEat(energyGained) {
+                // Define how much lifespan and speed increase per unit of energy
+                const lifespanIncreasePerEnergy = 2;
+                
+                // Different speed increases for herbivores and carnivores
+                const speedIncreaseFactorPerEnergy = this.dna.species === 'herbivore' 
+                    ? 0.00002  // Smaller speed increase for herbivores 
+                    : 0.0002;  // Original speed increase for carnivores
+
+                // Calculate increases
+                const lifespanIncrease = energyGained * lifespanIncreasePerEnergy;
+                const speedIncrease = this.baseMaxSpeed * speedIncreaseFactorPerEnergy * energyGained;
+
+                // Update lifespan and ensure it doesn't exceed a maximum value
+                this.lifespan += lifespanIncrease;
+                const maxAllowedLifespan = this.baseLifespan * 2;
+                if (this.lifespan > maxAllowedLifespan) {
+                    this.lifespan = maxAllowedLifespan;
+                }
+
+                // Update maxSpeed and ensure it doesn't exceed a maximum value
+                this.dna.maxSpeed = this.baseMaxSpeed + speedIncrease;
+                const maxAllowedSpeed = this.baseMaxSpeed * 7;  // allows creatures to jump away from predators
+                if (this.dna.maxSpeed > maxAllowedSpeed) {
+                    this.dna.maxSpeed = maxAllowedSpeed;
+                }
+            }
+        }
+
+        let quickshoalActive = false;
+        let quickshoalStartTime = 0;
+        const QUICKSHOAL_DURATION = 3000; // 3 seconds
+
+        // Add event listener for quickshoal button
+        const quickshoalButton = document.getElementById('quickshoalButton');
+        quickshoalButton.addEventListener('click', () => {
+            quickshoalActive = true;
+            quickshoalStartTime = Date.now();
+            quickshoalButton.classList.add('active');
+        });    
+
+        let herbivoreCountHistory = [];
+        let lastHistoryUpdate = Date.now();
+        const historyUpdateInterval = 100; // Update history every 100ms
+        const historyDuration = 30000; // Keep 30 seconds of history
+        const requiredHistoryPoints = Math.floor(historyDuration / historyUpdateInterval);
+
+        function updateHerbivoreHistory() {
+            const currentTime = Date.now();
+            
+            // Only update every 100ms
+            if (currentTime - lastHistoryUpdate >= historyUpdateInterval) {
+                const herbivoreCount = creatures.filter(c => c.dna.species === 'herbivore').length;
+                
+                // Add new count to history
+                herbivoreCountHistory.push(herbivoreCount);
+                
+                // Remove old entries to maintain only 1 minute of history
+                if (herbivoreCountHistory.length > requiredHistoryPoints) {
+                    herbivoreCountHistory.shift();
+                }
+                
+                // Check if we have enough history and all counts are between 500-600
+                if (herbivoreCountHistory.length === requiredHistoryPoints) {
+                    const allInRange = herbivoreCountHistory.every(count => count >= 350 && count <= 700);
+                    
+                    if (allInRange) {
+                        // Add predators and reset history
+                        const predatorsToAdd = 1 
+                        addPredators(predatorsToAdd);
+                        herbivoreCountHistory = []; // Reset history after spawning
+                        
+                        // Optional: Add visual feedback
+                        console.log(`Spawned ${predatorsToAdd} predators due to stable herbivore population`);
+                    }
+                }
+                
+                lastHistoryUpdate = currentTime;
+            }
+        }
+
+        /* -------------------- Food Class -------------------- */
+
+        class Food {
+            constructor(x, y) {
+                this.position = {
+                    x: x || Math.random() * canvas.width,
+                    y: y || Math.random() * canvas.height
+                };
+                this.size = 3;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.position.x, this.position.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 255, 0, 0.5)';
+                ctx.fill();
+            }
+        }
+
+        /* -------------------- Safe Zone Class -------------------- */
+
+        class SafeZone {
+            constructor() {
+                this.position = { x: canvas.width / 2, y: canvas.height / 2 };
+                this.radius = 150; // Radius of the safe zone
+                this.active = false;
+            }
+
+            draw() {
+                if (this.active) {
+                    ctx.beginPath();
+                    ctx.arc(this.position.x, this.position.y, this.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(0, 100, 255, 0.2)';
+                    ctx.fill();
+                    ctx.strokeStyle = 'rgba(0, 100, 255, 0.5)';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+            }
+        }
+
+        /* -------------------- Utility Functions -------------------- */
+
+        function distance(a, b) {
+            return Math.hypot(a.x - b.x, a.y - b.y);
+        }
+
+        function seek(position, target, maxSpeed) {
+            const desired = {
+                x: target.x - position.x,
+                y: target.y - position.y
+            };
+            const d = Math.sqrt(desired.x ** 2 + desired.y ** 2);
+            if (d === 0) return { x: 0, y: 0 }; // Prevent division by zero
+            desired.x = (desired.x / d) * maxSpeed;
+            desired.y = (desired.y / d) * maxSpeed;
+            return {
+                x: desired.x - 0,
+                y: desired.y - 0
+            };
+        }
+
+        function flee(position, target, maxSpeed) {
+            const desired = {
+                x: position.x - target.x,
+                y: position.y - target.y
+            };
+            const d = Math.sqrt(desired.x ** 2 + desired.y ** 2);
+            if (d === 0) return { x: 0, y: 0 }; // Prevent division by zero
+            desired.x = (desired.x / d) * maxSpeed;
+            desired.y = (desired.y / d) * maxSpeed;
+            return {
+                x: desired.x - 0,
+                y: desired.y - 0
+            };
+        }
+
+        function limitForce(force, max) {
+            const magnitude = Math.sqrt(force.x ** 2 + force.y ** 2);
+            if (magnitude > max) {
+                force.x = (force.x / magnitude) * max;
+                force.y = (force.y / magnitude) * max;
+            }
+            return force;
+        }
+
+        function mutateDNA(dna, mutationRate) {
+            const newDNA = { ...dna };
+            const mutationFactor = mutationRate / 100;
+            newDNA.maxSpeed += (Math.random() * 2 - 1) * newDNA.maxSpeed * mutationFactor;
+            newDNA.maxForce += (Math.random() * 2 - 1) * newDNA.maxForce * mutationFactor;
+            newDNA.perceptionRadius += (Math.random() * 2 - 1) * newDNA.perceptionRadius * mutationFactor;
+
+            // Ensure attributes stay within reasonable bounds
+            newDNA.maxSpeed = Math.max(1, newDNA.maxSpeed);
+            newDNA.maxForce = Math.max(0.01, newDNA.maxForce);
+            newDNA.perceptionRadius = Math.max(10, newDNA.perceptionRadius);
+
+            return newDNA;
+        }
+
+        /* -------------------- Event Listeners -------------------- */
+
+        const mouse = { x: null, y: null };
+        canvas.addEventListener('mousemove', (event) => {
+            mouse.x = event.x;
+            mouse.y = event.y;
+            // Place food at mouse position while holding down left mouse button
+            if (event.buttons === 1) {
+                foods.push(new Food(mouse.x, mouse.y));
+            }
+        });
+
+        // Add a huge lump of food on mouse click
+        canvas.addEventListener('click', (event) => {
+            const numFoodItems = 1500; // Number of food items to create
+            const radius = 150; // Radius within which to spread the food
+            for (let i = 0; i < numFoodItems; i++) {
+                const angle = Math.random() * 2 * Math.PI;
+                const distanceFromClick = Math.random() * radius;
+                const x = event.x + Math.cos(angle) * distanceFromClick;
+                const y = event.y + Math.sin(angle) * distanceFromClick;
+                foods.push(new Food(x, y));
+            }
+        });
+
+        /* -------------------- Ecosystem Setup -------------------- */
+
+        let creatures = [];
+        let foods = [];
+        let safeZone = new SafeZone(); // Initialize the safe zone
+
+        function initializeEcosystem() {
+            creatures = [];
+            foods = [];
+            safeZone = new SafeZone();
+            for (let i = 0; i < values.creatureCount; i++) {
+                creatures.push(new Creature());
+            }
+            for (let i = 0; i < values.foodAbundance; i++) {
+                foods.push(new Food());
+            }
+        }
+        initializeEcosystem();
+
+        function adjustCreatureCount(count) {
+            if (count > creatures.length) {
+                for (let i = creatures.length; i < count; i++) {
+                    creatures.push(new Creature());
+                }
+            } else {
+                creatures.splice(count);
+            }
+        }
+
+        function adjustFoodCount(count) {
+            if (count > foods.length) {
+                for (let i = foods.length; i < count; i++) {
+                    foods.push(new Food());
+                }
+            } else {
+                foods.splice(count);
+            }
+        }
+
+        function addPredators(count) {
+            for (let i = 0; i < count; i++) {
+                const predatorDNA = {
+                    maxSpeed: Math.random() * 4 + 3,
+                    maxForce: Math.random() * 0.3 + 0.1,
+                    perceptionRadius: Math.random() * 100 + 20,
+                    color: 'rgba(255, 0, 0, 0.7)',
+                    species: 'carnivore',
+                    size: 10
+                };
+                const lifespan = 200000 + Math.random() * 200;
+                creatures.push(new Creature(predatorDNA, null, lifespan));
+            }
+        }
+
+        /* -------------------- Nuke Functionality -------------------- */
+
+        let explosion = null; // Variable to hold explosion state
+
+        function activateNuke() {
+            // Start the explosion from the safe zone center
+            explosion = {
+                x: safeZone.position.x,
+                y: safeZone.position.y,
+                radius: 0,
+                maxRadius: Math.hypot(canvas.width, canvas.height) // Enough to cover the whole screen
+            };
+        }
+
+        function updateExplosion() {
+            if (explosion) {
+                // Increase the explosion radius
+                explosion.radius += 5;
+
+                // Draw the explosion
+                ctx.fillStyle = `rgba(0, 255, 0, ${1 - explosion.radius / explosion.maxRadius})`;
+                ctx.beginPath();
+                ctx.arc(explosion.x, explosion.y, explosion.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Check for creatures within the explosion radius
+                for (let i = creatures.length - 1; i >= 0; i--) {
+                    const creature = creatures[i];
+                    const dist = distance(explosion, creature.position);
+                    if (dist < explosion.radius) {
+                        if (creature.dna.species === 'carnivore') {
+                            // Kill 90% of predators
+                            if (Math.random() < 0.9) {
+                                creatures.splice(i, 1);
+                            } else {
+                                // Reset energy to original value
+                                creature.energy = creature.maxEnergy;
+                            }
+                        } else {
+                            // Kill all other creatures (herbivores)
+                            creatures.splice(i, 1);
+                        }
+                    }
+                }
+
+                // End the explosion when it covers the whole screen
+                if (explosion.radius >= explosion.maxRadius) {
+                    explosion = null;
+                }
+            }
+        }
+
+        /* -------------------- Graph Configuration -------------------- */
+        
+        const graphConfig = {
+            updateInterval: 1000,    // Update every second
+            maxPoints: 600,          // 600 points for 10 minutes of history
+            graphHeight: 100,       // Graph height
+            graphWidth: 1330,        // Graph width
+            padding: 10,           // Padding from edges
+            maxHerbivores: 1000,   // Expected maximum herbivore population
+            maxCarnivores: 100     // Expected maximum carnivore population
+        };
+
+        let populationHistory = {
+            herbivores: [],
+            carnivores: []
+        };
+
+        let lastGraphUpdateTime = Date.now();
+
+        /* -------------------- Animation Loop -------------------- */
+
+        function animate() {
+            // Clear the canvas with a semi-transparent fill for motion blur effect
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Update and draw food
+            for (let food of foods) {
+                food.draw();
+            }
+
+            // Occasionally add new food
+            if (Math.random() < 0.99 && foods.length < values.foodAbundance) {
+                foods.push(new Food());
+            }
+
+            // Update and draw creatures
+            for (let i = creatures.length - 1; i >= 0; i--) {
+                const creature = creatures[i];
+                creature.behaviors(creatures, foods);
+                creature.update();
+                creature.draw();
+
+                if (creature.isDead()) {
+                    creatures.splice(i, 1);
+                }
+            }
+
+            if (quickshoalActive && Date.now() - quickshoalStartTime > QUICKSHOAL_DURATION) {
+                quickshoalActive = false;
+                quickshoalButton.classList.remove('active');
+            }
+
+            // Update and draw the explosion if active
+            if (explosion) {
+                updateExplosion();
+            }
+
+            // Draw the safe zone if active
+            if (safeZone.active) {
+                safeZone.draw();
+            }
+
+            // Manage safe zone activation and deactivation
+            manageSafeZone();
+
+            // Display statistics
+            displayStats();
+
+            // Update population history for the graph
+            updatePopulationHistoryGraph();
+
+            // Draw the population graph
+            drawPopulationGraph();
+
+            // Update herbivore history for spawning predators
+            updateHerbivoreHistory();
+
+            requestAnimationFrame(animate);
+        }
+
+
+        /* -------------------- Safe Zone Management -------------------- */
+
+        function manageSafeZone() {
+            const herbivores = creatures.filter(c => c.dna.species === 'herbivore').length;
+            const carnivores = creatures.filter(c => c.dna.species === 'carnivore').length;
+
+            // Activate safe zone if herbivores are less than one half of carnivores
+            if (!safeZone.active && herbivores < carnivores / 2) {
+                safeZone.active = true;
+            }
+
+            // Deactivate safe zone if herbivores are ten times carnivores
+            if (safeZone.active && herbivores >= carnivores * 10) {
+                safeZone.active = false;
+            }
+        }
+
+        /* -------------------- Display Statistics -------------------- */
+
+        function displayStats() {
+            ctx.fillStyle = 'white';
+            ctx.font = '14px Arial';
+            ctx.fillText(`Creatures: ${creatures.length}`, 20, canvas.height - 80);
+            ctx.fillText(`Food: ${foods.length}`, 20, canvas.height - 60);
+
+            const herbivores = creatures.filter(c => c.dna.species === 'herbivore').length;
+            const carnivores = creatures.filter(c => c.dna.species === 'carnivore').length;
+            ctx.fillText(`Herbivores: ${herbivores}`, 20, canvas.height - 40);
+            ctx.fillText(`Carnivores: ${carnivores}`, 20, canvas.height - 20);
+
+            // Indicate if the safe zone is active
+            if (safeZone.active) {
+                ctx.fillText(`Safe Zone Active`, 150, canvas.height - 20);
+            }
+        }
+
+        /* -------------------- Graphing Functions -------------------- */
+
+        function updatePopulationHistoryGraph() {
+            const currentTime = Date.now();
+            if (currentTime - lastGraphUpdateTime >= graphConfig.updateInterval) {
+                // Get current populations
+                const herbivoreCount = creatures.filter(c => c.dna.species === 'herbivore').length;
+                const carnivoreCount = creatures.filter(c => c.dna.species === 'carnivore').length;
+                
+                // Convert to percentages of maximum expected population
+                const herbivorePercentage = (herbivoreCount / graphConfig.maxHerbivores) * 100;
+                const carnivorePercentage = (carnivoreCount / graphConfig.maxCarnivores) * 100;
+
+                populationHistory.herbivores.push({
+                    count: herbivoreCount,
+                    percentage: herbivorePercentage
+                });
+                populationHistory.carnivores.push({
+                    count: carnivoreCount,
+                    percentage: carnivorePercentage
+                });
+
+                // Maintain only the required number of points
+                if (populationHistory.herbivores.length > graphConfig.maxPoints) {
+                    populationHistory.herbivores.shift();
+                    populationHistory.carnivores.shift();
+                }
+
+                lastGraphUpdateTime = currentTime;
+            }
+        }
+
+        function drawPopulationGraph() {
+            const graphX = canvas.width - graphConfig.graphWidth - graphConfig.padding;
+            const graphY = canvas.height - graphConfig.graphHeight - graphConfig.padding;
+
+            // Draw graph background
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+            ctx.fillRect(graphX, graphY, graphConfig.graphWidth, graphConfig.graphHeight);
+
+            // Draw grid lines and percentages
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.font = '8px Arial';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 4; i++) {
+                const y = graphY + (i * graphConfig.graphHeight / 4);
+                const percentage = 100 - (i * 25); // 100%, 75%, 50%, 25%, 0%
+                
+                // Draw grid line
+                ctx.beginPath();
+                ctx.moveTo(graphX, y);
+                ctx.lineTo(graphX + graphConfig.graphWidth, y);
+                ctx.stroke();
+                
+                // Draw percentage label
+                ctx.fillText(`${percentage}%`, graphX + 2, y + 8);
+            }
+
+            // Draw population lines with smoothing
+            function drawPopulationLine(data, color) {
+                if (data.length < 2) return;
+
+                ctx.beginPath();
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+
+                // Move to first point
+                const startX = graphX;
+                const startY = graphY + graphConfig.graphHeight - (data[0].percentage / 100) * graphConfig.graphHeight;
+                ctx.moveTo(startX, startY);
+
+                // Draw smooth curve through points
+                for (let i = 1; i < data.length; i++) {
+                    const x = graphX + (i / (graphConfig.maxPoints - 1)) * graphConfig.graphWidth;
+                    const y = graphY + graphConfig.graphHeight - (data[i].percentage / 100) * graphConfig.graphHeight;
+                    
+                    const prevX = graphX + ((i - 1) / (graphConfig.maxPoints - 1)) * graphConfig.graphWidth;
+                    const prevY = graphY + graphConfig.graphHeight - (data[i - 1].percentage / 100) * graphConfig.graphHeight;
+                    
+                    const cp1x = prevX + (x - prevX) / 2;
+                    const cp2x = prevX + (x - prevX) / 2;
+                    
+                    ctx.bezierCurveTo(cp1x, prevY, cp2x, y, x, y);
+                }
+                ctx.stroke();
+            }
+
+            // Draw both population lines
+            drawPopulationLine(populationHistory.herbivores, 'rgba(150, 200, 255, 0.8)');
+            drawPopulationLine(populationHistory.carnivores, 'rgba(255, 0, 0, 0.8)');
+
+            // Draw legend with current values
+            const legendX = graphX + 5;
+            const legendY = graphY + 5;
+            
+            ctx.fillStyle = 'white';
+            ctx.font = '10px Arial';
+            
+            // Get current populations (last elements in history)
+            const currentHerb = populationHistory.herbivores.length > 0 ? 
+                populationHistory.herbivores[populationHistory.herbivores.length - 1] : {count: 0, percentage: 0};
+            const currentCarn = populationHistory.carnivores.length > 0 ? 
+                populationHistory.carnivores[populationHistory.carnivores.length - 1] : {count: 0, percentage: 0};
+            
+            // Herbivore legend
+            ctx.strokeStyle = 'rgba(150, 200, 255, 0.8)';
+            ctx.beginPath();
+            ctx.moveTo(legendX + 40, legendY + 5);
+            ctx.lineTo(legendX + 60, legendY + 5);
+            ctx.stroke();
+            ctx.fillText(`herbivores: ${currentHerb.count}`, legendX + 65, legendY + 8);
+            
+            // Carnivore legend
+            ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
+            ctx.beginPath();
+            ctx.moveTo(legendX + 140, legendY + 5);
+            ctx.lineTo(legendX + 160, legendY + 5);
+            ctx.stroke();
+            ctx.fillText(`Carnivores: ${currentCarn.count}`, legendX + 165, legendY + 8);
+        }
+        /* -------------------- Initialization -------------------- */
+
+        // Start the animation loop
+        animate();
+    </script>
+</body>
+</html>

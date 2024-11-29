@@ -9,6 +9,10 @@ You will see a control panel on the top-left corner where you can adjust the num
 
 For now, you can either let it go on its own, or click the mouse to add lots of food for the little blue creatures 🐠. After the screen is swarming with little creatures and food is going fast, you will notice that there is an equilibrium point that the creature population reaches where they just shoal about. Don't worry, I've made things more interesting, and that interesting thing will happen when the system is stabilized at around 450 creatures for 30 seconds. Carnivores 🦈 come out to feed! This is when the sim gets kind of fun to look at!
 
+
+https://github.com/user-attachments/assets/cb81db65-c4cc-49b9-b85e-51543b3f9551
+
+
 You can also add predators/carnivores of your own. It will take a lot of adding, but once the herbivore population is below half the amount of the carnivore population, a safe zone will appear, and the herbivores will gather inside and reproduce until they are let free and (quickly eaten again). This creates a little cycle that is fun to watch. Once you're done watching this, you can use the "Nuke" button to trigger a dramatic event that wipes out everything and resets the map. I kept the previous iterations of this simulation so that 1.) you can see my progress with developing this and 2.) because they have very different dynamics. The first, `biomeSim.html` is much more focused on the safeZone cycle. The current one is more focused on watching the beautiful shoaling in action, and not so much with maintaining the safeZone cycle.  
 
 Monitor the real-time statistics displayed at the bottom-left to observe the population dynamics of herbivores and carnivores. Experiment with different settings to see how various factors influence the balance of the ecosystem. 

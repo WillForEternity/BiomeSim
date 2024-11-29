@@ -16,7 +16,7 @@ You can also add predators/carnivores of your own. It will take a lot of adding,
 
 Monitor the real-time statistics displayed at the bottom-left to observe the population dynamics of herbivores and carnivores. Experiment with different settings to see how various factors influence the balance of the ecosystem. 
 
-Here's a demo of the BiomeSim Safezone Cycle I mentioned... this goes on pretty much forever as the creature lifespan and other dynamics are adjusted for this.
+Here's a demo of the BiomeSim Safezone Cycle I mentioned... this goes on pretty much forever as the creature lifespan and other dynamics are adjusted for this. Why? Well, because I think the auotnomous swarm-fleeing behavior is really cool! They just pour out of that safezone and I really like that effect. 
 -- --
 https://github.com/user-attachments/assets/099322e3-0ecc-43a3-a786-bf038ebc7ba9
 -- --

@@ -1,9 +1,8 @@
 # Underwater Biome Simulation! 🌊🦈🐠...☢️
 
-
-https://github.com/user-attachments/assets/f362ac9f-86e3-4681-8472-3b244ab0dffa
+Welcome to this little **Underwater Biome Simulation!** To get started, simply open the provided `underwaterBiomeSimulator.html` file and get it running in your browser of choice. Once running, it will automatically start the simulation. **I recommend letting the simulation run on its own, for it is nearly optimized to be self-sustaining.** Have fun watching the shoals and... the chase!
 -- --
-Welcome to this little ** Underwater Biome Simulation**! To get started, simply open the provided `underwaterBiomeSimulator.html` file and get it running in your browser of choice. Once running, it will automatically start the simulation. **I recommend letting the simulation run on its own, for it is nearly optimized to be self-sustaining.** Have fun watching the shoals and... the chase!
+https://github.com/user-attachments/assets/f362ac9f-86e3-4681-8472-3b244ab0dffa
 -- --
 You will see a control panel on the top-left corner where you can adjust the number of creatures, mutation rate, and food abundance using the sliders. 
 

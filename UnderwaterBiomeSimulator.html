@@ -148,9 +148,9 @@
                 
                 // Set size based on species
                 if (dna && dna.species === 'carnivore') {
-                    this.size = 7; // Fixed size for predators
+                    this.size = 7; // Predator size
                 } else {
-                    this.size = 5; // Variable size for herbivores
+                    this.size = 5; // Herbivore size
                 }
                 
                 this.energy = 30;
@@ -250,13 +250,13 @@
                     this.trail = []; // Clear trail when wrapping
                 }
 
-                // Decrease energy
+                // Decrease energy over time
                 if (this.dna.species === 'carnivore') {
                     this.energy -= 0.0005;
                 } else {
                     this.energy -= 0.01;
                 }
-                this.age += 1;
+                this.age += 1; // Make them older
             }
 
             applyForce(force) {
@@ -389,55 +389,80 @@
                 }
 
                 // Hunt prey
-                // Enhanced Hunt prey
                 if (this.dna.species === 'carnivore') {
-                    let preyCount = 0;
-                    let herdCenter = { x: 0, y: 0 };
                     let closestPrey = null;
                     let minDist = Infinity;
+                    let preyCount = 0;
+                    let herdCenter = { x: 0, y: 0 };
+                    let isChasing = false;
 
                     // Analyze nearby herbivores
                     for (let other of creatures) {
                         if (other.dna.species === 'herbivore') {
                             const d = distance(this.position, other.position);
-                            if (d < this.dna.perceptionRadius) {
+                            
+                            // Track overall herd movement
+                            if (d < this.dna.perceptionRadius * 2) {
                                 preyCount++;
                                 herdCenter.x += other.position.x;
                                 herdCenter.y += other.position.y;
+                            }
 
-                                if (d < minDist) {
-                                    minDist = d;
-                                    closestPrey = other;
+                            // Find closest prey for potential chase
+                            if (d < this.dna.perceptionRadius && d < minDist) {
+                                minDist = d;
+                                closestPrey = other;
+                                if (d < this.dna.perceptionRadius * 0.5) { // If prey is close, enter chase mode
+                                    isChasing = true;
                                 }
+                            }
 
-                                if (d < this.size * 1.5) {
-                                    // Eat prey
-                                    other.energy = 0;
-                                    this.energy += 100;
-                                    this.energy = Math.min(this.energy, this.maxEnergy);
-
-                                    // Adjust lifespan and speed based on energy gain
-                                    this.adjustAttributesOnEat(150);
-
-                                    // Increase size slightly when eating
-                                    this.size = Math.min(this.size + 0.5, 10);
-                                }
+                            // Attempt to catch prey
+                            if (d < this.size * 1.5) {
+                                other.energy = 0;
+                                this.energy += 100;
+                                this.energy = Math.min(this.energy, this.maxEnergy);
+                                this.adjustAttributesOnEat(150);
+                                this.size = Math.min(this.size + 0.5, 10);
                             }
                         }
                     }
 
-                    if (preyCount > 0) {
-                        // Calculate the center of the herd
+                    // Adjust speed and behavior based on hunting state
+                    if (isChasing && closestPrey) {
+                        // Chase mode - higher speed
+                        this.dna.maxSpeed = this.baseMaxSpeed * 1.3;
+                        const chaseForce = seek(this.position, closestPrey.position, this.dna.maxSpeed);
+                        steer.x += chaseForce.x * 2;
+                        steer.y += chaseForce.y * 2;
+                    } else if (preyCount > 0) {
+                        // Survey mode - slower movement, attracted to herds
+                        this.dna.maxSpeed = this.baseMaxSpeed * 0.7;
                         herdCenter.x /= preyCount;
                         herdCenter.y /= preyCount;
-
-                        // Adjust hunting behavior based on herd size
-                        // The larger the herd, the stronger the attraction
-                        const herdInfluence = Math.min(preyCount / 50, 5); // Cap the influence to prevent excessive force
-
-                        const herdForce = seek(this.position, herdCenter, this.dna.maxSpeed);
-                        steer.x += herdForce.x * herdInfluence;
-                        steer.y += herdForce.y * herdInfluence;
+                        
+                        // Add some wandering behavior when surveying
+                        const wanderAngle = Math.sin(Date.now() * 0.001) * Math.PI;
+                        const wanderRadius = 50;
+                        const wanderPoint = {
+                            x: herdCenter.x + Math.cos(wanderAngle) * wanderRadius,
+                            y: herdCenter.y + Math.sin(wanderAngle) * wanderRadius
+                        };
+                        
+                        const surveyForce = seek(this.position, wanderPoint, this.dna.maxSpeed);
+                        steer.x += surveyForce.x * 0.5;
+                        steer.y += surveyForce.y * 0.5;
+                    } else {
+                        // Search mode - medium speed, random movement
+                        this.dna.maxSpeed = this.baseMaxSpeed;
+                        const wanderAngle = Math.sin(Date.now() * 0.001) * Math.PI * 2;
+                        const wanderPoint = {
+                            x: this.position.x + Math.cos(wanderAngle) * 100,
+                            y: this.position.y + Math.sin(wanderAngle) * 100
+                        };
+                        const searchForce = seek(this.position, wanderPoint, this.dna.maxSpeed);
+                        steer.x += searchForce.x;
+                        steer.y += searchForce.y;
                     }
                 }
 
@@ -892,7 +917,7 @@
             graphWidth: 1330,        // Graph width
             padding: 10,           // Padding from edges
             maxHerbivores: 1000,   // Expected maximum herbivore population
-            maxCarnivores: 100     // Expected maximum carnivore population
+            maxCarnivores: 30     // Expected maximum carnivore population
         };
 
         let populationHistory = {
@@ -915,7 +940,7 @@
             }
 
             // Occasionally add new food
-            if (Math.random() < 0.99 && foods.length < values.foodAbundance) {
+            if (Math.random() < 2 && foods.length < values.foodAbundance) {
                 foods.push(new Food());
             }
 
